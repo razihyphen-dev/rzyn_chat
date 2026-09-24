@@ -114,7 +114,21 @@ export function createSocial({db,state,escape,toast,render,run,confetti,ago,relo
     await loadAdmin();toast('Room permission updated')}
   const pushUrl='/.netlify/functions/push';
   async function pushRequest(data){let session=(await db.auth.getSession()).data.session;if(!session)throw Error('Sign in again to enable push');let r=await fetch(pushUrl,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify(data)});let json=await r.json().catch(()=>({error:'Push service unavailable'}));if(!r.ok)throw Error(json.error||'Push request failed');return json}
-  async function subscribePush(){if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw Error('This browser does not support closed-app push');if(Notification.permission==='denied')throw Error('Notifications are blocked in your device settings');let permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Notification permission was not granted');let r=await fetch(pushUrl);let json=await r.json();if(!r.ok||!json.publicKey)throw Error('Set up the Netlify push function first');let registration=await navigator.serviceWorker.ready;let existing=await registration.pushManager.getSubscription();let subscription=existing||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:Uint8Array.from(atob(json.publicKey.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0))});await pushRequest({action:'subscribe',subscription:subscription.toJSON()});toast('Closed-app push is on for this device')}
+  async function subscribePush(){
+    if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw Error('This browser does not support closed-app push');
+    if(!state.pushReady||!state.pushPublicKey)throw Error('Push is unavailable. Ask your RZYN admin to finish setup.');
+    if(Notification.permission==='denied')throw Error('Notifications are blocked in your device settings');
+    if(/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.matchMedia('(display-mode: standalone)').matches&&!navigator.standalone)throw Error('Add RZYN to your iPhone Home Screen and open it there to enable push.');
+    const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();
+    if(permission!=='granted')throw Error('Notification permission was not granted');
+    const registration=await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>setTimeout(()=>reject(Error('Push service did not start. Reload and try again.')),10000))]);
+    const existing=await registration.pushManager.getSubscription();
+    const publicKey=state.pushPublicKey;
+    const subscription=existing||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:Uint8Array.from(atob(publicKey.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0))});
+    await pushRequest({action:'subscribe',subscription:subscription.toJSON()});
+    localStorage.setItem(`rzyn-push-prompt:${state.session.user.id}`,'enabled');
+    render(true);toast('Closed-app push is on for this device');
+  }
   async function notifyServer(id){try{await pushRequest({action:'dispatch',messageId:id})}catch(e){console.warn('Push delivery could not start:',e.message)}}
   return {s,load,loadAdmin,refreshReactions,refreshVotes,view,advancedAdmin,messageExtras,replyPreview,bodyHtml,composerExtras,typingText,onlineCount,onlineIds,pollsInline,todayQuote,setRoomChannel,connectPresence,destroy,broadcastTyping,suggestion,handleAction,handleForm,change,notifyServer,subscribePush,BUILTIN_SOUNDS};
 }

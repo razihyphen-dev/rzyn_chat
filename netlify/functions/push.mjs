@@ -7,7 +7,8 @@ const env=()=>({url:process.env.SUPABASE_URL||process.env.VITE_SUPABASE_URL,key:
 
 export default async function handler(request){
  const config=env();
- if(request.method==='GET')return config.publicKey?json({publicKey:config.publicKey}):json({error:'Push is not configured'},503);
+ if(request.method==='GET')return config.url&&config.key&&config.publicKey&&config.privateKey&&config.subject
+  ?json({publicKey:config.publicKey}):json({error:'Push is not configured'},503);
  if(request.method!=='POST')return json({error:'Method not allowed'},405);
  if(!config.url||!config.key||!config.publicKey||!config.privateKey||!config.subject)return json({error:'Push is not configured'},503);
  if(Number(request.headers.get('content-length')||0)>10000)return json({error:'Request too large'},413);
